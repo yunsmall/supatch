@@ -38,7 +38,11 @@ static void usage(int status)
     if (status != EXIT_SUCCESS) {
         fprintf(stderr, "Try `%s --help' for more information.\n", program_name);
     } else {
-        fprintf(stdout, "\nKPatch-Next userspace cli.\n");
+        fprintf(stdout, "\nKPatch-Next userspace cli (supatch fork).\n");
+        fprintf(stdout,
+                "Supatch backend: generic netlink (family %s) when the "
+                "KPatch runtime is absent.\n",
+                KPM_GENL_FAMILY_NAME);
         fprintf(stdout, KERNEL_PATCH_BANNER);
         fprintf(stdout,
                 " \n"
@@ -94,6 +98,7 @@ int main(int argc, char **argv)
         { "bootlog", 'l' },
         { "panic", '.' },
 
+        { "help", 'h' },
         { "--help", 'h' },
         { "-h", 'h' },
         { "--version", 'v' },
