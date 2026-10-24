@@ -125,6 +125,37 @@ insmod /data/local/tmp/kpm_host.ko kpm_syms="kallsyms_lookup_name:0x$ADDR"
 `helper/suzhi_loader` 是旧版 ioctl 驱动，只适用于旧 ABI；当前版本改用
 generic netlink，请直接用 `kpatch kpm load`。
 
+### 为什么 kpm_syms 由用户空间传入，而不是用 kprobe
+
+`kallsyms_lookup_name` 从 Linux 5.7 起不再导出，而 KPM 是 ET_REL，
+加载时必须靠它把 `extern` 符号解析到内核地址。模块内部拿不到这个函数，
+常见的替代方案有三种：
+
+1. **用户空间读 `/proc/kallsyms`，把地址通过模块参数传进来**（本方案）；
+2. 在内核里扫描 kallsyms 表，反推 `kallsyms_lookup_name` 的地址；
+3. 用 kprobe 的 `symbol_name` 让内核按名字解析符号。
+
+选 1 的原因：
+
+- **不依赖 `CONFIG_KPROBES`**：部分内核裁掉了 kprobe；即使开着，
+  厂商内核也可能对 `kallsyms_lookup_name` 这类符号设了 kprobe 黑名单。
+- **不依赖内核内部布局**：扫描 kallsyms 表要跟着内核版本适配
+  `kallsyms_names` / `kallsyms_offsets` / `kallsyms_relative_base` 等结构，
+  跨版本维护成本高。
+- **不引入额外的内核修改**：kprobe 注册会在目标函数入口写断点指令，
+  在 GKI/kCFI 内核上有稳定性和被完整性检测的风险。
+- **厂商模块可能检测 kprobe**：一加/OPPO 的部分内核模块带有反注入/
+  反调试逻辑，可能检查 kprobe 的使用痕迹（函数入口断点、kprobe 列表、
+  相关计数）。这一点尚未逆向验证，但用 kprobe 取符号地址存在额外的
+  暴露面。
+- **离线也能用**：同样的地址可以从 boot.img 里的 vmlinux 提取，
+  不要求设备运行时一定可读 `/proc/kallsyms`。
+
+代价是加载前要临时把 `kernel.kptr_restrict` 设为 0（否则地址全为 0），
+加载后可以恢复。模块参数格式为
+`kpm_syms="name:0xaddr[,name:0xaddr...]"`；目前只需要
+`kallsyms_lookup_name` 一个锚点，其余符号由它在运行时按名字解析。
+
 ### 直接使用 generic netlink（不经 kpatch）
 
 控制通道是 generic netlink family `oplus_dfr`，消息格式（`kpm_genl_hdr` +
