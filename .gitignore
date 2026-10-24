@@ -11,6 +11,8 @@ kpms/
 *.o
 *.a
 *.ko
+# 发布用的预编译 agent（按内核版本命名，显式放行）
+!build/kpm_host-gki-*.ko
 *.pyc
 __pycache__/
 kpatch-user/kpatch
