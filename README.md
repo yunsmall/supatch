@@ -221,6 +221,20 @@ su -c 'find /data/adb /system /vendor -name kpatch 2>/dev/null'
 - **不要混用两个加载器**：KPatch 内核运行时加载的 KPM 与 supatch 加载的 KPM
   是两套独立实例，WebUI 在 supatch 模式下只看到后者。
 
+## 支持的内核版本
+
+| 内核 | 状态 | 说明 |
+|---|---|---|
+| GKI 6.12（android16-5） | **已验证** | 测试设备 OnePlus Ace 6T，arm64，4K 页，kCFI |
+| GKI 6.10+ | 代码路径支持 | `execmem_alloc` / `execmem_free` 路径；未逐设备实测 |
+| GKI 5.10 / 5.15 / 6.1 | 原版支持 | `module_alloc` / `module_memfree`、`cfi_module_add`；本 fork 未逐版本回归 |
+| 16K 页内核 | 未验证 | 当前按 4K 页假设 |
+| < 5.10 | 未支持 | — |
+
+CFI 方面，Android 5.10 的 clang CFI（`__cfi_slowpath`）与 6.x 的 kCFI
+（`report_cfi_failure`）两条路径都已实现；KPM 侧的结构体布局仍需要按目标
+内核的 BTF 核对。
+
 ## 多内核版本支持
 
 supatch 是 LKM，vermagic / MODVERSIONS 无法绕过，因此多版本支持的做法是：
