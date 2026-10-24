@@ -5,7 +5,8 @@
 obj-m += kpm_host.o
 kpm_host-objs := kpm_host_core.o kpm_host_re.o kpm_ctl.o
 
-ccflags-y += -fno-stack-protector -fno-plt -ffixed-x18
+# -fno-plt 会生成 R_AARCH64_ADR_GOT_PAGE 重定位，内核模块加载器不支持
+ccflags-y += -fno-stack-protector -ffixed-x18
 
 .PHONY: clean
 clean:

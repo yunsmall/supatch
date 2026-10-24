@@ -4,7 +4,19 @@
 # KPM 模块二进制（含闭源，不对外发布）
 *.kpm
 
-# 编译中间产物（保留 .ko/.arm64 预编译产物）
+# 本地测试 KPM（针对特定设备/厂商，不对外发布）
+kpms/
+
+# 编译中间产物
 *.o
+*.a
+*.ko
 *.pyc
 __pycache__/
+kpatch-user/kpatch
+
+# 本地构建产物与审查记录：不随仓库发布
+dist/
+tmp/
+review*.md
+kpatch-review*.md

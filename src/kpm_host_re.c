@@ -32,7 +32,8 @@ static u64 kpm_do_reloc(enum kpm_aarch64_reloc_op reloc_op, void *place, u64 val
 
 static int kpm_reloc_data(enum kpm_aarch64_reloc_op op, void *place, u64 val, int len)
 {
-	u64 imm_mask = (1 << len) - 1;
+	/* len 可以是 64，1 << 64 是未定义行为，必须单独处理 */
+	u64 imm_mask = (len >= 64) ? ~0ULL : ((1ULL << len) - 1);
 	s64 sval = kpm_do_reloc(op, place, val);
 
 	switch (len) {
@@ -127,27 +128,47 @@ int kpm_apply_relocate_add(Elf64_Shdr *sechdrs, const char *strtab, unsigned int
 	void *loc;
 	u64 val;
 	Elf64_Rela *rel = (void *)sechdrs[relsec].sh_addr;
+	Elf64_Shdr *symtab_sh = &sechdrs[symindex];
+	unsigned long nsyms = symtab_sh->sh_size / sizeof(Elf64_Sym);
 
-	pr_alert("kpm: rl[%u] enter nsymtabsect=%u infosec=%u size=%lu nrel=%lu\n",
-		 relsec, symindex, sechdrs[relsec].sh_info, sechdrs[relsec].sh_size,
-		 sechdrs[relsec].sh_size / sizeof(*rel));
+	/* 下面的边界检查用 img->size - 8；小于 8 时会回绕成巨大值 */
+	if (img->size < sizeof(u64))
+		return -ENOEXEC;
+
+	pr_alert("kpm: rl[%u] enter nsymtabsect=%u infosec=%u size=%llu nrel=%llu\n",
+		 relsec, symindex, sechdrs[relsec].sh_info,
+		 (unsigned long long)sechdrs[relsec].sh_size,
+		 (unsigned long long)(sechdrs[relsec].sh_size / sizeof(*rel)));
 	for (i = 0; i < sechdrs[relsec].sh_size / sizeof(*rel); i++) {
 		if (i < 8 || i % 128 == 0)
 			pr_alert("kpm: rl[%u] i=%u off=%llx type=%u sym=%u\n", relsec, i,
-				 rel[i].r_offset, ELF64_R_TYPE(rel[i].r_info),
-				 ELF64_R_SYM(rel[i].r_info));
+				 (unsigned long long)rel[i].r_offset,
+				 (unsigned int)ELF64_R_TYPE(rel[i].r_info),
+				 (unsigned int)ELF64_R_SYM(rel[i].r_info));
 		else if (i % 64 == 63)
-			pr_alert("kpm: rl-progress[%u] i=%u/%zu\n", relsec, i,
-				 sechdrs[relsec].sh_size / sizeof(*rel));
+			pr_alert("kpm: rl-progress[%u] i=%u/%llu\n", relsec, i,
+				 (unsigned long long)(sechdrs[relsec].sh_size / sizeof(*rel)));
 		loc = (void *)sechdrs[sechdrs[relsec].sh_info].sh_addr + rel[i].r_offset;
+		/* 用减法检查，避免 loc + 8 回绕绕过边界 */
 		if ((unsigned long)loc < (unsigned long)img->base ||
-		    (unsigned long)loc + 8 > (unsigned long)img->base + img->size) {
-			pr_err("kpm: reloc loc OOB: %px (base %px size %lu rel %u/%zu)\n",
+		    (unsigned long)loc > (unsigned long)img->base + img->size - 8) {
+			pr_err("kpm: reloc loc OOB: %px (base %px size %lu rel %u/%llu)\n",
 			       loc, img->base, img->size, i,
-			       sechdrs[relsec].sh_size / sizeof(*rel));
+			       (unsigned long long)(sechdrs[relsec].sh_size / sizeof(*rel)));
 			return -ENOEXEC;
 		}
-		sym = (Elf64_Sym *)sechdrs[symindex].sh_addr + ELF64_R_SYM(rel[i].r_info);
+		/* 必须按 symtab 条目数检查，否则损坏的 KPM 可以指向 symtab
+		 * 之外但仍在镜像内的数据，拿来当符号用。 */
+		{
+			unsigned long symidx = ELF64_R_SYM(rel[i].r_info);
+
+			if (symidx >= nsyms) {
+				pr_err("kpm: reloc sym index OOB: %lu >= %lu\n",
+				       symidx, nsyms);
+				return -ENOEXEC;
+			}
+			sym = (Elf64_Sym *)symtab_sh->sh_addr + symidx;
+		}
 		if ((unsigned long)sym < (unsigned long)img->base ||
 		    (unsigned long)sym + sizeof(*sym) > (unsigned long)img->base + img->size) {
 			pr_err("kpm: reloc sym OOB: %px\n", sym);
